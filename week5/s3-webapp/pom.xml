@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>edu.cloudcomputing26</groupId>
+  <artifactId>s3-webapp</artifactId>
+  <version>1.0.0</version>
+  <packaging>war</packaging>
+
+  <name>S3 SDK WebApp</name>
+  <description>
+    Jakarta Servlet web application, built with Maven, with three
+    S3-backed endpoints (list / upload / download) using the AWS SDK for
+    Java v2 — deploys as a .war to Apache Tomcat 10. This is the follow-on
+    project for the course's S3 + AWS SDK for Java session, built starting
+    from the same servlet basics covered in the earlier Java Web App with
+    Maven session (labs/hello-world-webapp/).
+  </description>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Current as of 2026-09-24 — re-check
+         https://central.sonatype.com/artifact/software.amazon.awssdk/bom
+         before class in case of a newer release. -->
+    <aws.sdk.version>2.55.4</aws.sdk.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!--
+        The AWS SDK BOM (Bill of Materials) pins compatible versions for
+        every software.amazon.awssdk module, so individual dependencies
+        below (like s3) don't need their own <version> — this is AWS's
+        own recommended setup, not a course-specific shortcut.
+      -->
+      <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>bom</artifactId>
+        <version>${aws.sdk.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!--
+      Jakarta Servlet API 6.0 matches Tomcat 10.1's servlet spec version.
+      scope=provided: Tomcat supplies this at runtime, so it must be on the
+      compile classpath but must NOT be bundled into the .war (bundling it
+      would conflict with the copy Tomcat already provides).
+    -->
+    <dependency>
+      <groupId>jakarta.servlet</groupId>
+      <artifactId>jakarta.servlet-api</artifactId>
+      <version>6.0.0</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <!--
+      AWS SDK for Java v2, S3 module. Unlike the servlet API, this is
+      NOT provided by Tomcat — Tomcat has no idea what S3 is — so it uses
+      the default scope (compile) and IS bundled into the .war, under
+      WEB-INF/lib/. No version here: it comes from the BOM above.
+
+      By default this module pulls in BOTH the Apache and Netty HTTP
+      client implementations as transitive dependencies, even though
+      only one is ever used at a time — that alone accounts for several
+      megabytes of the .war. They're excluded here in favor of the
+      URL Connection client below, which ships as part of the JDK
+      itself (no extra dependency at all) and is plenty for the simple,
+      one-request-at-a-time calls this lab makes.
+    -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>s3</artifactId>
+      <exclusions>
+        <!--
+          Note: in SDK 2.55.x this module is "apache5-client" (a rename
+          from the older "apache-client", reflecting a move to Apache
+          HttpClient 5.x internally) — double-check this artifactId
+          against `mvn dependency:tree` if a future SDK version renames
+          it again.
+        -->
+        <exclusion>
+          <groupId>software.amazon.awssdk</groupId>
+          <artifactId>apache5-client</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>software.amazon.awssdk</groupId>
+          <artifactId>netty-nio-client</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>url-connection-client</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>s3-webapp</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-war-plugin</artifactId>
+        <version>3.5.1</version>
+        <configuration>
+          <!-- No src/main/webapp/WEB-INF/web.xml is provided; every
+               servlet is registered via the @WebServlet annotation instead. -->
+          <failOnMissingWebXml>false</failOnMissingWebXml>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.16.0</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>

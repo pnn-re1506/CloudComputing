@@ -1,0 +1,11 @@
+/.keys
+
+# Secrets: never commit these
+cloud26-key.pem
+phucnhan_accessKeys.csv
+*.pem
+*.ppk
+*accessKeys*.csv
+
+# Maven build output
+target/

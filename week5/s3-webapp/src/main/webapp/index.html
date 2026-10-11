@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>S3 Bucket Manager</title>
+  <style>
+    body { font-family: Georgia, serif; margin: 2rem; }
+    table { border-collapse: collapse; margin-top: 1rem; }
+    th, td { padding: 4px 16px; text-align: left; }
+    th { border-bottom: 2px solid #333; }
+    td.num { text-align: right; }
+    #status { margin-top: .5rem; }
+    .error { color: #b00020; }
+    .ok { color: #1b6e1b; }
+  </style>
+</head>
+<body>
+  <h1>Upload a file to S3</h1>
+  <p>Bucket: <code id="bucket">loading...</code></p>
+
+  <form id="upload-form">
+    <input type="file" name="file" id="file" required>
+    <button type="submit" id="upload-btn">Upload</button>
+  </form>
+  <div id="status"></div>
+
+  <table>
+    <thead>
+      <tr><th>Key</th><th>Size (bytes)</th><th>Last modified</th></tr>
+    </thead>
+    <tbody id="objects"></tbody>
+  </table>
+
+  <script>
+    const bucketEl = document.getElementById('bucket');
+    const bodyEl = document.getElementById('objects');
+    const statusEl = document.getElementById('status');
+    const form = document.getElementById('upload-form');
+    const fileInput = document.getElementById('file');
+    const btn = document.getElementById('upload-btn');
+
+    function setStatus(msg, cls) {
+      statusEl.textContent = msg;
+      statusEl.className = cls || '';
+    }
+
+    async function loadObjects() {
+      const res = await fetch('api/objects', { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || ('HTTP ' + res.status));
+      }
+      bucketEl.textContent = data.bucket;
+      bodyEl.replaceChildren();
+      for (const o of data.objects) {
+        const tr = document.createElement('tr');
+        const key = document.createElement('td');
+        key.textContent = o.key;               // textContent: safe against HTML in keys
+        const size = document.createElement('td');
+        size.className = 'num';
+        size.textContent = o.size;
+        const mod = document.createElement('td');
+        mod.textContent = o.lastModified;
+        tr.append(key, size, mod);
+        bodyEl.appendChild(tr);
+      }
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();               // stay on the page: no reload
+      btn.disabled = true;
+      setStatus('Uploading...');
+      try {
+        const res = await fetch('api/upload', {
+          method: 'POST',
+          body: new FormData(form)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || ('HTTP ' + res.status));
+        }
+        setStatus('Uploaded: ' + data.key, 'ok');
+        form.reset();
+        await loadObjects();            // refresh the table automatically
+      } catch (err) {
+        setStatus('Upload failed: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // On load: show bucket name and the table of objects.
+    loadObjects().catch(err => {
+      bucketEl.textContent = '(unavailable)';
+      setStatus('Could not load objects: ' + err.message, 'error');
+    });
+  </script>
+</body>
+</html>

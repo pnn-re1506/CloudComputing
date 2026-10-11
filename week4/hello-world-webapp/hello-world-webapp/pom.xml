@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>edu.cloudcomputing26</groupId>
+  <artifactId>hello-world-webapp</artifactId>
+  <version>1.0.0</version>
+  <packaging>war</packaging>
+
+  <name>Hello World Servlet WebApp</name>
+  <description>
+    Minimal Jakarta Servlet web application, built with Maven, that responds
+    "Hello, world!" — deploys as a .war to Apache Tomcat 10. This is the
+    Java Web App with Maven session's project only. The S3-backed follow-on
+    project (list / upload / download endpoints using the AWS SDK for Java
+    v2) lives in the sibling folder labs/s3-webapp/, covered in the course's
+    separate S3 + SDK session.
+  </description>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <!--
+      Jakarta Servlet API 6.0 matches Tomcat 10.1's servlet spec version.
+      scope=provided: Tomcat supplies this at runtime, so it must be on the
+      compile classpath but must NOT be bundled into the .war (bundling it
+      would conflict with the copy Tomcat already provides).
+    -->
+    <dependency>
+      <groupId>jakarta.servlet</groupId>
+      <artifactId>jakarta.servlet-api</artifactId>
+      <version>6.0.0</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>hello-world-webapp</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-war-plugin</artifactId>
+        <version>3.5.1</version>
+        <configuration>
+          <!-- No src/main/webapp/WEB-INF/web.xml is provided; the servlet
+               is registered via the @WebServlet annotation instead. -->
+          <failOnMissingWebXml>false</failOnMissingWebXml>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.16.0</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>
