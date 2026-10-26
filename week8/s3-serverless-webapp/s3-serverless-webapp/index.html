@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>S3 Serverless WebApp</title>
+</head>
+<body>
+
+  <div id="loginSection">
+    <h1>Log in</h1>
+    <form id="loginForm">
+      <input type="password" id="tokenInput" placeholder="Token" required>
+      <button type="submit">Log in</button>
+    </form>
+  </div>
+
+  <div id="appSection" style="display: none;">
+    <h1>Upload a file to S3</h1>
+    <label>Bucket: <code id="bucket-name"></code></label>
+    <form id="uploadForm">
+      <input type="file" id="fileInput" required>
+      <button type="submit">Upload</button>
+    </form>
+    <div id="list"></div>
+  </div>
+
+  <script>
+    // EDIT ME: paste in each function's own Function URL after creating
+    // it in the Lambda console (Configuration -> Function URL). There is
+    // no single app origin anymore — each of these five endpoints is a
+    // separate Lambda function with its own, unrelated URL. Compare this
+    // to every earlier version of this app, where every endpoint was
+    // just a different path under the same Tomcat server.
+    const LOGIN_URL = "https://EDIT-ME.lambda-url.ap-southeast-1.on.aws/";
+    const BUCKET_NAME_URL = "https://EDIT-ME.lambda-url.ap-southeast-1.on.aws/";
+    const LIST_URL = "https://EDIT-ME.lambda-url.ap-southeast-1.on.aws/";
+    const UPLOAD_URL = "https://EDIT-ME.lambda-url.ap-southeast-1.on.aws/";
+    const DOWNLOAD_URL = "https://EDIT-ME.lambda-url.ap-southeast-1.on.aws/";
+
+    // Same as every earlier version: the token lives only in this
+    // page's own memory for the lifetime of this page load, never in
+    // localStorage/sessionStorage/a cookie. See the "Security of vs. in
+    // the Cloud" lecture notes for why.
+    let token = null;
+
+    function authHeaders() {
+      return { "Authorization": "Bearer " + token };
+    }
+
+    document.getElementById("loginForm").addEventListener("submit", function (event) {
+      event.preventDefault();
+      const submittedToken = document.getElementById("tokenInput").value;
+
+      fetch(LOGIN_URL, {
+        method: "post",
+        body: submittedToken
+      })
+        .then(response => {
+          if (response.ok) {
+            token = submittedToken;
+            document.getElementById("loginSection").style.display = "none";
+            document.getElementById("appSection").style.display = "block";
+            listObjects();
+            showBucketName();
+          } else {
+            response.text().then(text => alert(text));
+          }
+        })
+        .catch(error => alert("Error: " + error));
+    });
+
+    function showBucketName() {
+      fetch(BUCKET_NAME_URL, { headers: authHeaders() })
+        .then(response => {
+          if (response.ok) {
+            response.text().then(text => {
+              document.getElementById("bucket-name").textContent = text;
+            });
+          } else {
+            response.text().then(text => alert(text));
+          }
+        })
+        .catch(error => alert("Error: " + error));
+    }
+
+    function listObjects() {
+      fetch(LIST_URL, { headers: authHeaders() })
+        .then(response => {
+          if (response.ok) {
+            response.json().then(objects => {
+              let table = "<table><tr><th>Key</th><th>Size</th><th>Last modified</th></tr>";
+              for (const object of objects) {
+                table += "<tr><td>" + object.key + "</td><td>" + object.size + "</td><td>" + object.lastModified + "</td></tr>";
+              }
+              table += "</table>";
+              document.getElementById("list").innerHTML = table;
+            });
+          } else {
+            response.text().then(text => alert(text));
+          }
+        })
+        .catch(error => alert("Error: " + error));
+    }
+
+    // Unlike every earlier version, this is NOT a <form method="post"
+    // enctype="multipart/form-data"> submission — there's no servlet
+    // container on the other end to parse that format. The file's raw
+    // bytes go straight into the request body, with the filename in
+    // its own header, matching what S3UploadFunction expects.
+    document.getElementById("uploadForm").addEventListener("submit", function (event) {
+      event.preventDefault();
+      const file = document.getElementById("fileInput").files[0];
+      if (!file) {
+        return;
+      }
+
+      fetch(UPLOAD_URL, {
+        method: "post",
+        headers: Object.assign({ "X-Filename": file.name }, authHeaders()),
+        body: file
+      })
+        .then(response => {
+          if (response.ok) {
+            listObjects();
+          } else {
+            response.text().then(text => alert(text));
+          }
+        })
+        .catch(error => alert("Error: " + error));
+    });
+  </script>
+</body>
+</html>

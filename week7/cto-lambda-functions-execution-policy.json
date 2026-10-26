@@ -1,0 +1,26 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListSpecificBucket",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::cloud26-phucnhan-bucket"
+    },
+    {
+      "Sid": "ReadWriteObjectsInSpecificBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::cloud26-phucnhan-bucket/*"
+    },
+    {
+      "Sid": "InvokeCheckTokenIsValidOnly",
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:ap-southeast-1:353842237220:function:CheckTokenIsValid"
+    }
+  ]
+}

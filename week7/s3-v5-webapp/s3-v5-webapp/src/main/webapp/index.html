@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>S3 SDK WebApp</title>
+</head>
+<body>
+
+  <div id="loginSection">
+    <h1>Log in</h1>
+    <form id="loginForm">
+      <input type="password" id="tokenInput" placeholder="Token" required>
+      <button type="submit">Log in</button>
+    </form>
+  </div>
+
+  <div id="appSection" style="display: none;">
+    <h1>Upload a file to S3</h1>
+    <label>Bucket: <code id="bucket-name"></code></label>
+    <form id="uploadForm" method="post" enctype="multipart/form-data">
+      <input type="file" name="file" required>
+      <button type="submit">Upload</button>
+    </form>
+    <div id="list"></div>
+  </div>
+
+  <script>
+    // The token lives only in this page's own memory, for the lifetime
+    // of this page load. It is NOT stored in localStorage, sessionStorage,
+    // or a cookie: it exists only in this variable, and is lost the moment
+    // the page is reloaded or closed (the user then has to log in again).
+    // See the lecture notes for why this is deliberate, not an oversight.
+    let token = null;
+
+    function authHeaders() {
+      return { "Authorization": "Bearer " + token };
+    }
+
+    document.getElementById("loginForm").addEventListener("submit", function (event) {
+      event.preventDefault();
+      const submittedToken = document.getElementById("tokenInput").value;
+
+      fetch("login", {
+        method: "post",
+        body: submittedToken
+      })
+        .then(response => {
+          if (response.ok) {
+            token = submittedToken;
+            document.getElementById("loginSection").style.display = "none";
+            document.getElementById("appSection").style.display = "block";
+            listObjects();
+            showBucketName();
+          } else {
+            response.text().then(text => alert(text));
+          }
+        })
+        .catch(error => alert("Error: " + error));
+    });
+
+    function showBucketName() {
+      fetch("s3/bucket", { headers: authHeaders() })
+        .then(response => {
+          if (response.ok) {
+            response.text().then(text => {
+              document.getElementById("bucket-name").textContent = text;
+            });
+          } else {
+            response.text().then(text => alert(text));
+          }
+        })
+        .catch(error => alert("Error: " + error));
+    }
+
+    function listObjects() {
+      fetch("s3/list", { headers: authHeaders() })
+        .then(response => {
+          if (response.ok) {
+            response.json().then(objects => {
+              let table = "<table><tr><th>Key</th><th>Size</th><th>Last modified</th></tr>";
+              for (const object of objects) {
+                table += "<tr><td>" + object.key + "</td><td>" + object.size + "</td><td>" + object.lastModified + "</td></tr>";
+              }
+              table += "</table>";
+              document.getElementById("list").innerHTML = table;
+            });
+          } else {
+            response.text().then(text => alert(text));
+          }
+        })
+        .catch(error => alert("Error: " + error));
+    }
+
+    document.getElementById("uploadForm").addEventListener("submit", function (event) {
+      event.preventDefault();
+      const form = event.target;
+      fetch("s3/upload", {
+        method: "post",
+        headers: authHeaders(),
+        body: new FormData(form)
+      })
+        .then(response => {
+          if (response.ok) {
+            listObjects();
+          } else {
+            response.text().then(text => alert(text));
+          }
+        })
+        .catch(error => alert("Error: " + error));
+    });
+  </script>
+</body>
+</html>

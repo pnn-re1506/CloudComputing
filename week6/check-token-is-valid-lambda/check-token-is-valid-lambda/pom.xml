@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>edu.cloudcomputing26</groupId>
+  <artifactId>check-token-is-valid-lambda</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+
+  <name>CheckTokenIsValid Lambda</name>
+  <description>
+    A single AWS Lambda function, written in Java, that answers one
+    question: "is this the correct secret token?" It reads the correct
+    token from its own TOKEN environment variable (set in the Lambda
+    console, not hardcoded) and compares it against whatever token it
+    was invoked with. Deploys as a single "fat" .jar (via the Shade
+    plugin below) uploaded directly to Lambda — no S3 bucket, no
+    container image, no API Gateway involved. Called from
+    labs/s3-v5-webapp/'s AuthFilter via the AWS SDK's LambdaClient, for
+    the "AWS Lambda" session.
+  </description>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <!--
+      The Lambda Java Core library defines RequestHandler<I, O> (the
+      interface our handler class implements) and the Context object
+      passed to every invocation. It is NOT provided by the Lambda
+      runtime the way the servlet API is provided by Tomcat — it must be
+      bundled into the deployed .jar.
+    -->
+    <dependency>
+      <groupId>com.amazonaws</groupId>
+      <artifactId>aws-lambda-java-core</artifactId>
+      <version>1.2.3</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>check-token-is-valid-lambda</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.16.0</version>
+      </plugin>
+      <!--
+        Lambda's Java runtime needs every dependency bundled into one
+        single .jar (there is no WEB-INF/lib-style directory of separate
+        jars the way a .war has) — the Shade plugin produces that
+        "fat jar" at package time. This project has only one small
+        dependency, so the size difference is negligible, but the
+        mechanism is the same regardless of how many dependencies a real
+        Lambda function ends up with.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
