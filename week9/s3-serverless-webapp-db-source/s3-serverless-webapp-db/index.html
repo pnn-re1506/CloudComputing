@@ -19,6 +19,7 @@
     <label>Bucket: <code id="bucket-name"></code></label>
     <form id="uploadForm">
       <input type="file" id="fileInput" required>
+      <input type="text" id="noteInput" placeholder="Note about this file">
       <button type="submit">Upload</button>
     </form>
     <div id="list"></div>
@@ -31,11 +32,11 @@
     // separate Lambda function with its own, unrelated URL. Compare this
     // to every earlier version of this app, where every endpoint was
     // just a different path under the same Tomcat server.
-    const LOGIN_URL = "https://EDIT-ME.lambda-url.ap-southeast-1.on.aws/";
-    const BUCKET_NAME_URL = "https://EDIT-ME.lambda-url.ap-southeast-1.on.aws/";
-    const LIST_URL = "https://EDIT-ME.lambda-url.ap-southeast-1.on.aws/";
-    const UPLOAD_URL = "https://EDIT-ME.lambda-url.ap-southeast-1.on.aws/";
-    const DOWNLOAD_URL = "https://EDIT-ME.lambda-url.ap-southeast-1.on.aws/";
+    const LOGIN_URL = "https://orov5ynge2sjracmu6chdf3hoe0ohjls.lambda-url.ap-southeast-1.on.aws/";
+    const BUCKET_NAME_URL = "https://dnuygk7cax2owbjsfeti4wbabe0oxtoo.lambda-url.ap-southeast-1.on.aws/";
+    const LIST_URL = "https://ewxuwlkar6dqdisrydzopfcuia0ugdru.lambda-url.ap-southeast-1.on.aws/";
+    const UPLOAD_URL = "https://bdps5pr2klxsv4gorlnzfovtiq0xfhtt.lambda-url.ap-southeast-1.on.aws/";
+    const DOWNLOAD_URL = "https://fuakb3n7mctfrrrhfbwqdxqqwu0ijhvv.lambda-url.ap-southeast-1.on.aws/";
 
     // Same as every earlier version: the token lives only in this
     // page's own memory for the lifetime of this page load, never in
@@ -88,9 +89,9 @@
         .then(response => {
           if (response.ok) {
             response.json().then(objects => {
-              let table = "<table><tr><th>Key</th><th>Size</th><th>Last modified</th></tr>";
+              let table = "<table><tr><th>Key</th><th>Size</th><th>Last modified</th><th>Note</th></tr>";
               for (const object of objects) {
-                table += "<tr><td>" + object.key + "</td><td>" + object.size + "</td><td>" + object.lastModified + "</td></tr>";
+                table += "<tr><td>" + object.key + "</td><td>" + object.size + "</td><td>" + object.lastModified + "</td><td>" + object.note + "</td></tr>";
               }
               table += "</table>";
               document.getElementById("list").innerHTML = table;
@@ -107,16 +108,25 @@
     // container on the other end to parse that format. The file's raw
     // bytes go straight into the request body, with the filename in
     // its own header, matching what S3UploadFunction expects.
+    //
+    // New in this lab: the note travels in its own X-Note header,
+    // run through encodeURIComponent() first. HTTP header values can't
+    // safely carry newlines or arbitrary Unicode the way a JSON/text
+    // body can — S3UploadFunction decodes it back before saving it to
+    // DynamoDB.
     document.getElementById("uploadForm").addEventListener("submit", function (event) {
       event.preventDefault();
       const file = document.getElementById("fileInput").files[0];
       if (!file) {
         return;
       }
+      const note = document.getElementById("noteInput").value;
 
       fetch(UPLOAD_URL, {
         method: "post",
-        headers: Object.assign({ "X-Filename": file.name }, authHeaders()),
+        headers: Object.assign(
+          { "X-Filename": file.name, "X-Note": encodeURIComponent(note) },
+          authHeaders()),
         body: file
       })
         .then(response => {
