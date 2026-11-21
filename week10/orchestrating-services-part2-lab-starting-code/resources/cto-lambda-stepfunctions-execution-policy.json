@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StartAndPollFileNotesOrchestrationFromLambda",
+      "Effect": "Allow",
+      "Action": [
+        "states:StartExecution",
+        "states:DescribeExecution"
+      ],
+      "Resource": [
+        "arn:aws:states:ap-southeast-1:<ACCOUNT_ID>:stateMachine:FileNotesOrchestration",
+        "arn:aws:states:ap-southeast-1:<ACCOUNT_ID>:execution:FileNotesOrchestration:*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "Comment": "FileNotesOrchestration — the Step Functions version of the upload/note atomicity fix from the Orchestrating Services lab. Input: {\"fileKey\": ..., \"note\": ..., \"bucketName\": ...}. The S3 upload itself already happened in S3UploadFunction before this execution starts (a Step Functions execution input is capped at 256 KB, and isn't a natural place to carry binary file bytes) — this state machine's whole job is the DynamoDB write, its retries, and a compensating S3 delete if every retry fails. EDIT ME: fill in <YOUR_TABLE_NAME> (should be FileNotes, matching every other function in this app) before deploying.",
+  "StartAt": "SaveNoteToDynamoDB",
+  "States": {
+    "SaveNoteToDynamoDB": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:putItem",
+      "Parameters": {
+        "TableName": "FileNotes",
+        "Item": {
+          "fileKey": {
+            "S.$": "$.fileKey"
+          },
+          "note": {
+            "S.$": "$.note"
+          }
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "DeleteOrphanedUpload"
+        }
+      ],
+      "Next": "SaveSucceeded"
+    },
+    "SaveSucceeded": {
+      "Type": "Succeed"
+    },
+    "DeleteOrphanedUpload": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:s3:deleteObject",
+      "Parameters": {
+        "Bucket.$": "$.bucketName",
+        "Key.$": "$.fileKey"
+      },
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.compensationError",
+          "Next": "SaveFailedCompensationAlsoFailed"
+        }
+      ],
+      "Next": "SaveFailed"
+    },
+    "SaveFailed": {
+      "Type": "Fail",
+      "Error": "SaveNoteFailed",
+      "Cause": "DynamoDB PutItem failed after retries; the uploaded S3 object was deleted as a compensating action."
+    },
+    "SaveFailedCompensationAlsoFailed": {
+      "Type": "Fail",
+      "Error": "SaveNoteFailedAndCompensationFailed",
+      "Cause": "DynamoDB PutItem failed after retries, AND the compensating S3 delete also failed — the uploaded file is now orphaned with no note. This is the exact gap a state machine cannot fully close on its own either; the difference from the hand-rolled version is that this failure is now a clean, named terminal state visible in the execution history, not just an error message in a response body."
+    }
+  }
+}
