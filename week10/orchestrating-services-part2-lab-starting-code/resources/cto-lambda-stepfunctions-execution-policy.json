@@ -9,8 +9,8 @@
         "states:DescribeExecution"
       ],
       "Resource": [
-        "arn:aws:states:ap-southeast-1:<ACCOUNT_ID>:stateMachine:FileNotesOrchestration",
-        "arn:aws:states:ap-southeast-1:<ACCOUNT_ID>:execution:FileNotesOrchestration:*"
+        "arn:aws:states:ap-southeast-1:353842237220:stateMachine:FileNotesOrchestration",
+        "arn:aws:states:ap-southeast-1:353842237220:execution:FileNotesOrchestration:*"
       ]
     }
   ]

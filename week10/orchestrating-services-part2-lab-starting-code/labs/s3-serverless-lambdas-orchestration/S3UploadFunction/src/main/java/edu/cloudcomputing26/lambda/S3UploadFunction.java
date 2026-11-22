@@ -13,57 +13,50 @@ import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPResponse;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
-import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
-import software.amazon.awssdk.services.dynamodb.model.DynamoDbException;
-import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.sfn.SfnClient;
+import software.amazon.awssdk.services.sfn.model.DescribeExecutionRequest;
+import software.amazon.awssdk.services.sfn.model.DescribeExecutionResponse;
+import software.amazon.awssdk.services.sfn.model.ExecutionStatus;
+import software.amazon.awssdk.services.sfn.model.SfnException;
+import software.amazon.awssdk.services.sfn.model.StartExecutionRequest;
+import software.amazon.awssdk.services.sfn.model.StartExecutionResponse;
 
 /**
- * Starting point for the "Orchestrating Services" lab's Part 2
- * (Step Functions). This is last session's ("Database Layer with
- * DynamoDB") version, unchanged: upload to S3, then one PutItem call
- * to DynamoDB, each with a plain try/catch and no retry or cleanup on
- * failure. See the lab handout's Part 1 for a live demo of the gap
- * this leaves (an upload that succeeds in S3 with no note, if the
- * DynamoDB call fails) and Part 2 for the Step Functions fix you will
- * build directly into this file.
+ * Part 2 of "Orchestrating Services". The S3 upload stays in this
+ * Lambda, exactly as in week 9. The DynamoDB note write, its retries,
+ * and the compensating delete now run in the FileNotesOrchestration
+ * state machine. This handler starts that execution and polls until it
+ * leaves RUNNING, because a Standard workflow has no start-and-wait API.
  *
- * Replaces s3-v5-webapp's S3UploadServlet — with one real design
- * change, not just a lift-and-shift: the servlet version accepted
- * multipart/form-data (an HTML <form>'s native upload format), parsed
- * for free by Tomcat's getPart(...). A bare Lambda function has no
- * servlet container to do that parsing, and hand-rolling a multipart
- * parser would add real complexity that has nothing to do with Lambda
- * itself. So the static page instead sends the file as the RAW request
- * body (fetch(..., { body: file })) plus the filename in a custom
- * X-Filename header — this function just reads both directly.
- *
- * A Lambda Function URL / API Gateway v2.0 event base64-encodes the
- * body whenever it isn't valid UTF-8 text (any binary file will not
- * be), and sets isBase64Encoded() to true when it did — this function
- * has to check that flag and decode accordingly, something the
- * servlet's getPart() handled invisibly.
- *
- * The note the user types alongside the upload arrives in its own
- * X-Note header, URL-encoded by the page before sending.
+ * Auth, CORS, the raw request body, and the X-Note header are unchanged
+ * from the week 9 upload function. Cors.java and AuthCheck.java in this
+ * module are reused as-is.
  */
 public class S3UploadFunction implements RequestHandler<APIGatewayV2HTTPEvent, APIGatewayV2HTTPResponse> {
 
-    /** EDIT ME: must match the bucket name used by every other function in this app. */
-    private static final String BUCKET_NAME = "<YOUR_BUCKET_NAME>";
+    private static final String BUCKET_NAME = "cloud26-phucnhan-bucket";
 
-    /** EDIT ME: must match the DynamoDB table name created for "Database Layer with DynamoDB". */
-    private static final String TABLE_NAME = "FileNotes";
+    /** Name must be FileNotesOrchestration, region ap-southeast-1, account from week 9. */
+    private static final String STATE_MACHINE_ARN =
+            "arn:aws:states:ap-southeast-1:353842237220:stateMachine:FileNotesOrchestration";
+
+    /**
+     * Failure path waits 1s + 2s + 4s inside the state machine before it
+     * deletes the object. 40 polls × 500 ms covers that without polling
+     * forever. The Lambda timeout must be longer than this loop (30 s).
+     */
+    private static final int MAX_POLL_ATTEMPTS = 40;
+    private static final long POLL_INTERVAL_MILLIS = 500L;
 
     private static final S3Client S3 = S3Client.builder()
             .region(Region.AP_SOUTHEAST_1)
             .httpClientBuilder(UrlConnectionHttpClient.builder())
             .build();
 
-    private static final DynamoDbClient DYNAMO_DB = DynamoDbClient.builder()
+    private static final SfnClient SFN = SfnClient.builder()
             .region(Region.AP_SOUTHEAST_1)
             .httpClientBuilder(UrlConnectionHttpClient.builder())
             .build();
@@ -115,26 +108,6 @@ public class S3UploadFunction implements RequestHandler<APIGatewayV2HTTPEvent, A
                     .build();
 
             S3.putObject(putRequest, RequestBody.fromBytes(fileBytes));
-
-            PutItemRequest putItemRequest = PutItemRequest.builder()
-                    .tableName(TABLE_NAME)
-                    .item(Map.of(
-                            "fileKey", AttributeValue.fromS(key),
-                            "note", AttributeValue.fromS(note)))
-                    .build();
-
-            DYNAMO_DB.putItem(putItemRequest);
-
-            return APIGatewayV2HTTPResponse.builder()
-                    .withStatusCode(200)
-                    .withHeaders(Cors.HEADERS)
-                    .withBody("Uploaded successfully.\n"
-                            + "Bucket: " + BUCKET_NAME + "\n"
-                            + "Key:    " + key + "\n"
-                            + "Size:   " + fileBytes.length + " bytes\n"
-                            + "Note:   " + note + "\n")
-                    .build();
-
         } catch (S3Exception e) {
             return APIGatewayV2HTTPResponse.builder()
                     .withStatusCode(500)
@@ -142,18 +115,92 @@ public class S3UploadFunction implements RequestHandler<APIGatewayV2HTTPEvent, A
                     .withBody("S3 error: " + e.awsErrorDetails().errorMessage()
                             + " (status " + e.statusCode() + ")")
                     .build();
+        }
 
-        } catch (DynamoDbException e) {
-            // The file itself is already in S3 at this point — only the
-            // note failed to save. Say so plainly rather than returning
-            // a generic failure that implies the whole upload was lost.
+        String executionInput = "{"
+                + "\"fileKey\":\"" + escapeJson(key) + "\","
+                + "\"note\":\"" + escapeJson(note) + "\","
+                + "\"bucketName\":\"" + escapeJson(BUCKET_NAME) + "\""
+                + "}";
+
+        try {
+            StartExecutionResponse startResponse = SFN.startExecution(StartExecutionRequest.builder()
+                    .stateMachineArn(STATE_MACHINE_ARN)
+                    .input(executionInput)
+                    .build());
+
+            String executionArn = startResponse.executionArn();
+
+            for (int attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
+                DescribeExecutionResponse describeResponse = SFN.describeExecution(DescribeExecutionRequest.builder()
+                        .executionArn(executionArn)
+                        .build());
+
+                if (describeResponse.status() == ExecutionStatus.RUNNING) {
+                    Thread.sleep(POLL_INTERVAL_MILLIS);
+                    continue;
+                }
+
+                if (describeResponse.status() == ExecutionStatus.SUCCEEDED) {
+                    return APIGatewayV2HTTPResponse.builder()
+                            .withStatusCode(200)
+                            .withHeaders(Cors.HEADERS)
+                            .withBody("Uploaded successfully.\n"
+                                    + "Bucket: " + BUCKET_NAME + "\n"
+                                    + "Key:    " + key + "\n"
+                                    + "Size:   " + fileBytes.length + " bytes\n"
+                                    + "Note:   " + note + "\n")
+                            .build();
+                }
+
+                // FAILED, TIMED_OUT, or ABORTED. On SaveNoteFailed the state
+                // machine has already deleted the object. On
+                // SaveNoteFailedAndCompensationFailed the delete also failed.
+                String error = describeResponse.error() == null
+                        ? String.valueOf(describeResponse.status())
+                        : describeResponse.error();
+                String cause = describeResponse.cause() == null ? "" : describeResponse.cause();
+                return APIGatewayV2HTTPResponse.builder()
+                        .withStatusCode(500)
+                        .withHeaders(Cors.HEADERS)
+                        .withBody(error + (cause.isEmpty() ? "" : " — " + cause))
+                        .build();
+            }
+
             return APIGatewayV2HTTPResponse.builder()
                     .withStatusCode(500)
                     .withHeaders(Cors.HEADERS)
-                    .withBody("File uploaded, but saving its note failed: "
+                    .withBody("Orchestration still running after " + MAX_POLL_ATTEMPTS
+                            + " polls. Execution: " + executionArn)
+                    .build();
+
+        } catch (SfnException e) {
+            // The object is already in S3, and this execution never started,
+            // so the state machine cannot compensate.
+            return APIGatewayV2HTTPResponse.builder()
+                    .withStatusCode(500)
+                    .withHeaders(Cors.HEADERS)
+                    .withBody("File uploaded, but starting the note orchestration failed: "
                             + e.awsErrorDetails().errorMessage()
                             + " (status " + e.statusCode() + ")")
                     .build();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return APIGatewayV2HTTPResponse.builder()
+                    .withStatusCode(500)
+                    .withHeaders(Cors.HEADERS)
+                    .withBody("Interrupted while waiting for the note orchestration.")
+                    .build();
         }
+    }
+
+    /** Same escaping as week 9's list function, plus newlines that would break this hand-built JSON. */
+    private static String escapeJson(String value) {
+        return value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 }

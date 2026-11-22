@@ -86,7 +86,7 @@
     </dependency>
     <dependency>
       <groupId>software.amazon.awssdk</groupId>
-      <artifactId>dynamodb</artifactId>
+      <artifactId>sfn</artifactId>
       <exclusions>
         <exclusion>
           <groupId>software.amazon.awssdk</groupId>
@@ -98,10 +98,6 @@
         </exclusion>
       </exclusions>
     </dependency>
-    <!-- EDIT ME: add software.amazon.awssdk:sfn here once you reach
-         Part 2, Step 3 — same BOM, same exclusions as the dependencies
-         above. Not included yet: Part 2 starts from last session's
-         plain S3 + DynamoDB version. -->
   </dependencies>
 
   <build>
