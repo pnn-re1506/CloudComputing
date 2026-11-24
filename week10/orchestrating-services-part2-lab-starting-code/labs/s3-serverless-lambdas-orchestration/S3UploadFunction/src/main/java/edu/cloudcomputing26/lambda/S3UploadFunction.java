@@ -177,6 +177,7 @@ public class S3UploadFunction implements RequestHandler<APIGatewayV2HTTPEvent, A
         } catch (SfnException e) {
             // The object is already in S3, and this execution never started,
             // so the state machine cannot compensate.
+            
             return APIGatewayV2HTTPResponse.builder()
                     .withStatusCode(500)
                     .withHeaders(Cors.HEADERS)
